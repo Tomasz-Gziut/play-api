@@ -16,6 +16,7 @@ class Room:
     id: str
     name: str
     game: str
+    host: str
     connections: dict = field(default_factory=dict)  # nick -> WebSocket
 
 
@@ -23,9 +24,9 @@ class RoomManager:
     def __init__(self):
         self.rooms: dict[str, Room] = {}
 
-    def create_room(self, name: str, game: str) -> str:
+    def create_room(self, name: str, game: str, host: str) -> str:
         room_id = str(uuid.uuid4())[:8]
-        self.rooms[room_id] = Room(id=room_id, name=name, game=game)
+        self.rooms[room_id] = Room(id=room_id, name=name, game=game, host=host)
         return room_id
 
     def get_room(self, room_id: str) -> Room | None:
@@ -33,7 +34,7 @@ class RoomManager:
 
     def get_rooms(self) -> list:
         return [
-            {"id": r.id, "name": r.name, "game": r.game, "players": list(r.connections.keys())}
+            {"id": r.id, "name": r.name, "game": r.game, "host": r.host, "players": list(r.connections.keys())}
             for r in self.rooms.values()
         ]
 

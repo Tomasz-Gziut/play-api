@@ -1,5 +1,7 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, HTTPException
+from fastapi.staticfiles import StaticFiles
 import json
+import os
 
 from manager import RoomManager, AVAILABLE_GAMES
 
@@ -18,11 +20,13 @@ async def list_rooms():
 
 
 @app.post("/rooms")
-async def create_room(name: str, game: str):
+async def create_room(name: str, game: str, nick: str):
     if game not in AVAILABLE_GAMES:
         raise HTTPException(status_code=400, detail=f"Unknown game. Available: {AVAILABLE_GAMES}")
-    room_id = manager.create_room(name, game)
-    return {"room_id": room_id, "name": name, "game": game}
+    if not nick.strip():
+        raise HTTPException(status_code=400, detail="Nick required")
+    room_id = manager.create_room(name, game, host=nick.strip())
+    return {"room_id": room_id, "name": name, "game": game, "host": nick.strip()}
 
 
 @app.websocket("/ws/{room_id}")
@@ -43,11 +47,11 @@ async def websocket_endpoint(
         return
     manager.register(websocket, room_id, nick)
 
-    # notify everyone (including self) about new player
     await manager.broadcast(room_id, {
         "type": "player_joined",
         "nick": nick,
         "players": manager.get_players(room_id),
+        "host": room.host,
     })
 
     try:
@@ -68,11 +72,10 @@ async def websocket_endpoint(
                     "data": msg.get("data"),
                 })
             else:
-                # forward unknown types as-is so game logic can be added later
                 await manager.broadcast(room_id, {
                     "type": msg_type,
                     "from": nick,
-                    **{k: v for k, v in msg.items() if k not in ("type",)},
+                    **{k: v for k, v in msg.items() if k != "type"},
                 })
 
     except WebSocketDisconnect:
@@ -81,4 +84,11 @@ async def websocket_endpoint(
             "type": "player_left",
             "nick": nick,
             "players": manager.get_players(room_id),
+            "host": room.host,
         })
+
+
+# Serve built Svelte app — must be last (catches remaining paths)
+_static_dir = os.path.join(os.path.dirname(__file__), "frontend", "dist")
+if os.path.isdir(_static_dir):
+    app.mount("/", StaticFiles(directory=_static_dir, html=True), name="frontend")
